@@ -90,13 +90,6 @@ function normalizeWebsiteMonitorList<T extends { agent_probe_clients?: unknown; 
   return monitors.map(normalizeWebsiteMonitor);
 }
 
-function boolCol(alias: string): string {
-  return `CASE WHEN ${alias} = 1 THEN 1 ELSE 0 END AS ${alias}`;
-}
-
-// We use a sentinel value to signal "no results" vs "empty first()" for nullable queries.
-const NULL_SENTINEL = Symbol('d1-null');
-
 // --- Client row mapper ---
 function mapClientRow(row: Record<string, unknown>): Client {
   return {
@@ -397,9 +390,8 @@ export async function cleanupD1OrphanClientData(db: D1Database): Promise<OrphanC
   const orphanPingSnapshots = await db.prepare('DELETE FROM ping_snapshots WHERE client NOT IN (SELECT uuid FROM clients)').run();
   const orphanOffline = await db.prepare('DELETE FROM offline_notifications WHERE client NOT IN (SELECT uuid FROM clients)').run();
   const orphanExpiry = await db.prepare('DELETE FROM expiry_notifications WHERE client NOT IN (SELECT uuid FROM clients)').run();
-  const orphanWebsiteChecks = await db.prepare('DELETE FROM website_checks WHERE source_client IS NOT NULL AND source_client NOT IN (SELECT uuid FROM clients)').run();
+  await db.prepare('DELETE FROM website_checks WHERE source_client IS NOT NULL AND source_client NOT IN (SELECT uuid FROM clients)').run();
 
-  const refs = await pruneD1ClientReferencesForClients(db, []); // get empty - actual pruning done above
   return {
     ping_tasks_updated: 0,
     load_notifications_updated: 0,
@@ -646,7 +638,6 @@ export async function getD1GpuRecordsCursor(db: D1Database, client: string, star
   if (end) { whereClause += ' AND time <= ?'; params.push(end); }
   const countRow = await db.prepare(`SELECT COUNT(*) AS total FROM gpu_records ${whereClause}`).bind(...params).first<{ total: number }>();
   const total = countRow?.total ?? 0;
-  const countParams = [...params];
   if (cursor) { whereClause += ' AND time < ?'; params.push(cursor); }
   const result = await db.prepare(`SELECT * FROM gpu_records ${whereClause} ORDER BY time DESC LIMIT ?`).bind(...params, limit).all<Record<string, unknown>>();
   const data = result.results.map(r => ({ ...r }) as unknown as GPUHistoryRecord);
@@ -1131,7 +1122,7 @@ export async function getD1PublicPingTasks(db: D1Database): Promise<PingTask[]> 
   return normalizePingTaskList(result.results.map(r => ({ ...r, clients: parseJsonField<string[]>(r.clients), all_clients: toBool(r.all_clients) }) as unknown as PingTask));
 }
 
-export async function getD1PublicWebsites(db: D1Database, periodHours: number, checkLimit: number, includeHidden: boolean): Promise<PublicWebsiteMonitor[]> {
+export async function getD1PublicWebsites(db: D1Database, _periodHours: number, checkLimit: number, includeHidden: boolean): Promise<PublicWebsiteMonitor[]> {
   let sql = 'SELECT * FROM website_monitors';
   if (!includeHidden) sql += ' WHERE hidden = 0';
   sql += ' ORDER BY sort_order, id';
@@ -1313,9 +1304,10 @@ export async function getD1StorageRowCounts(db: D1Database): Promise<TableRowCou
 export async function getD1BoundedStorageRowCounts(db: D1Database, limit: number): Promise<BoundedTableRowCounts> {
   const counts = await getD1StorageRowCounts(db);
   const capped: Record<string, boolean> = {};
+  const mutable = counts as unknown as Record<string, number>;
   for (const key of Object.keys(counts)) {
-    capped[key] = (counts as Record<string, number>)[key] > limit;
-    if (capped[key]) (counts as Record<string, number>)[key] = limit;
+    capped[key] = mutable[key] > limit;
+    if (capped[key]) mutable[key] = limit;
   }
   return { counts, capped: capped as BoundedTableRowCounts['capped'], limit };
 }

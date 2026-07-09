@@ -44,15 +44,36 @@ jobs:
       - name: Verify build
         run: npm run verify:cloudflare
 
+      - name: Resolve JWT secret
+        id: jwt
+        run: |
+          set -euo pipefail
+          if [ -n "${EXISTING_JWT_SECRET:-}" ]; then
+            JWT_SECRET="$EXISTING_JWT_SECRET"
+            echo "status=existing" >> "$GITHUB_OUTPUT"
+          else
+            JWT_SECRET=$(openssl rand -hex 32)
+            echo "status=generated" >> "$GITHUB_OUTPUT"
+          fi
+          # Avoid leaking the secret in workflow logs.
+          echo "::add-mask::$JWT_SECRET"
+          {
+            echo "value<<EOF"
+            echo "$JWT_SECRET"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          EXISTING_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
       - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ github.event.inputs.cloudflare_account_id }}
           command: |
-            d1 migrations apply cf-vps-monitor-db --remote &&
-            deploy --keep-vars
-          secrets: |
-            JWT_SECRET
+            set -euo pipefail
+            d1 migrations apply cf-vps-monitor-db --remote
+            printf '%s' "$JWT_SECRET" | wrangler secret put JWT_SECRET
+            wrangler deploy --keep-vars
         env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_SECRET: ${{ steps.jwt.outputs.value }}

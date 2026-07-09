@@ -282,7 +282,9 @@ export type WebsiteMonitorInput = Omit<
   | 'last_notified_at'
   | 'created_at'
   | 'updated_at'
->;
+> & {
+  sort_order?: number;
+};
 
 export interface WebsiteCheck {
   id: number;

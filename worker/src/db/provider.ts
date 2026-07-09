@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { isD1Configured, D1ConfigurationError, type D1Env } from './d1/client';
+import { isD1Configured, type D1Env } from './d1/client';
 import { redactDatabaseSecrets } from '../utils/setup-diagnostics';
 
 export type DatabaseProvider = 'd1';

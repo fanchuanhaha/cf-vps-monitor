@@ -1,8 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Badge, Box, Button, Card, Flex, Heading, Separator, Text, TextField } from '@radix-ui/themes';
-import { CheckCircle2, Database, KeyRound, Loader2, XCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { Badge, Box, Card, Flex, Heading, Separator, Text } from '@radix-ui/themes';
+import { Database } from 'lucide-react';
 
 type InitInfo = {
   ok: boolean;
@@ -10,29 +8,8 @@ type InitInfo = {
   migration_count?: number;
 };
 
-type InitResult = {
-  success?: boolean;
-  project_ref?: string;
-  total?: number;
-  applied?: number;
-  skipped?: number;
-  results?: Array<{
-    version: string;
-    name: string;
-    status: 'applied' | 'skipped';
-  }>;
-  error?: string;
-};
-
-async function readJson(response: Response): Promise<InitResult> {
-  return response.json().catch(() => ({ error: response.statusText }));
-}
-
 export default function DbInit() {
   const [info, setInfo] = React.useState<InitInfo | null>(null);
-  const [token, setToken] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
-  const [result, setResult] = React.useState<InitResult | null>(null);
 
   React.useEffect(() => {
     fetch('/api/setup/database/init')
@@ -40,34 +17,6 @@ export default function DbInit() {
       .then(setInfo)
       .catch(() => setInfo({ ok: false }));
   }, []);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!token.trim()) {
-      toast.error('数据库初始化已由 D1 迁移自动处理，无需手动操作');
-      return;
-    }
-    setLoading(true);
-    setResult(null);
-    try {
-      const response = await fetch('/api/setup/database/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: token.trim() }),
-      });
-      const body = await readJson(response);
-      setResult(body);
-      if (!response.ok || !body.success) throw new Error(body.error || `HTTP ${response.status}`);
-      setToken('');
-      toast.success('数据库初始化完成');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '初始化失败');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const done = Boolean(result?.success);
 
   return (
     <div className="login-page db-init-page">
@@ -98,33 +47,6 @@ export default function DbInit() {
             D1 数据库迁移在部署时通过 wrangler d1 migrations apply 自动执行，无需手动操作。
           </Text>
         </Flex>
-
-        {result && (
-          <Box className={`db-init-result ${done ? 'is-success' : 'is-error'}`} mt="4">
-            <Flex align="center" gap="2" mb="2">
-              {done ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-              <Text size="2" weight="bold">
-                {done ? `完成：新执行 ${result.applied ?? 0} 个，跳过 ${result.skipped ?? 0} 个` : '初始化失败'}
-              </Text>
-            </Flex>
-            {result.error && <Text size="2">{result.error}</Text>}
-            {done && (
-              <Flex direction="column" gap="1" className="db-init-log">
-                {(result.results || []).map((item) => (
-                  <Text size="1" key={item.version}>
-                    {item.status === 'applied' ? '执行' : '跳过'} {item.version}
-                  </Text>
-                ))}
-              </Flex>
-            )}
-          </Box>
-        )}
-
-        {done && (
-          <Button asChild size="3" variant="soft" mt="4" style={{ width: '100%' }}>
-            <Link to="/admin/login">进入后台登录</Link>
-          </Button>
-        )}
       </Card>
     </div>
   );
