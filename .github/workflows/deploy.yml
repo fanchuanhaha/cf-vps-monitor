@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       cloudflare_account_id:
-        description: Cloudflare Account ID
-        required: true
+        description: Cloudflare Account ID（可选，默认读取 secrets.CLOUDFLARE_ACCOUNT_ID）
+        required: false
         type: string
       deploy_environment:
         description: Deployment environment
@@ -28,6 +28,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.deploy_environment || 'production' }}
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ github.event.inputs.cloudflare_account_id || secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -69,7 +71,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ github.event.inputs.cloudflare_account_id }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: |
             set -euo pipefail
             d1 migrations apply cf-vps-monitor-db --remote
