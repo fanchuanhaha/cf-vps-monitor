@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       cloudflare_account_id:
-        description: Cloudflare Account ID（可选，默认读取 secrets.CLOUDFLARE_ACCOUNT_ID）
+        description: Cloudflare Account ID（留空则从 Secrets 读取）
         required: false
+        default: ''
         type: string
       deploy_environment:
         description: Deployment environment
@@ -28,8 +29,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.deploy_environment || 'production' }}
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ github.event.inputs.cloudflare_account_id || secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -42,6 +41,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build frontend
+        run: npm --prefix frontend run build
 
       - name: Verify build
         run: npm run verify:cloudflare
@@ -57,7 +59,6 @@ jobs:
             JWT_SECRET=$(openssl rand -hex 32)
             echo "status=generated" >> "$GITHUB_OUTPUT"
           fi
-          # Avoid leaking the secret in workflow logs.
           echo "::add-mask::$JWT_SECRET"
           {
             echo "value<<EOF"
@@ -71,7 +72,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || github.event.inputs.cloudflare_account_id }}
           command: |
             set -euo pipefail
             d1 migrations apply cf-vps-monitor-db --remote
