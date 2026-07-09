@@ -1,0 +1,58 @@
+name: Deploy to Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloudflare_account_id:
+        description: Cloudflare Account ID
+        required: true
+        type: string
+      deploy_environment:
+        description: Deployment environment
+        required: false
+        type: choice
+        default: production
+        options:
+          - production
+          - preview
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: cf-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.deploy_environment || 'production' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify build
+        run: npm run verify:cloudflare
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ github.event.inputs.cloudflare_account_id }}
+          command: |
+            d1 migrations apply cf-vps-monitor-db --remote &&
+            deploy --keep-vars
+          secrets: |
+            JWT_SECRET
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
